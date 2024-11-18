@@ -23,4 +23,5 @@ print(radio.getCloneComment(linenr=1))
 print(radio.getCloneComment(linenr=2))
 print(radio.getFreq())
 
-radio.setFreq(145500000,145000000)
+while True:
+    r = radio.processCommand(verbose = True)

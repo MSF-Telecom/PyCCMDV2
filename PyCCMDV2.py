@@ -1,6 +1,6 @@
 import time
 """
-PyCCMDV2 - a Python library for PC-CMD V2 protocol, used by the majority of ICOM Professionnal radios.
+PyCCMDV2 - a Python library for PC-CMD V2 protocol, used by the majority of ICOM Professional radios.
 Frédéric Druppel - Manoel Casquilho
 
 
@@ -41,13 +41,6 @@ class Transceiver :
 
     self.setChannel(self.DEFCH)
 
-  def discover(self, idRange = (0, 9999999)) :
-    """
-    • TODO : Implement this method
-    """
-    # TODO: Implement this function
-    return ()
-
   def sendCommand(self, command):
     """
     Parameters :
@@ -76,7 +69,7 @@ class Transceiver :
     if self.mode :
       command = '*SET,DPMR,TXMSG,IND,{},{},MSG,"{}",ACK'.format(self.zfill(str(otherID), 7), self.zfill(str(self.ownID), 7), message)
     else :
-      command = '*SET,IDAS,TXMSG,IND,{},{},MSG,"{}",ACK'.format(self.zfill(str(otherID), 7), self.zfill(str(self.ownID), 7), message)
+      command = '*SET,IDAS,TXMSG,IND,{},{},MSG,"{}",ACK'.format(str(otherID), str(self.ownID), message)
     if verbose :
       print('-> {}'.format(command))
     self.sendCommand(command)
@@ -126,7 +119,7 @@ class Transceiver :
     if self.mode :
       command = '*SET,DPMR,TXSTAT,IND,{},{},{},ACK'.format(self.zfill(str(otherID), 7), self.zfill(str(self.ownID), 7), str(status))
     else :
-      command = '*SET,IDAS,TXSTAT,IND,{},{},{},ACK'.format(self.zfill(str(otherID), 7), self.zfill(str(self.ownID), 7), str(status))      
+      command = '*SET,IDAS,TXSTAT,IND,{},{},{},ACK'.format(str(otherID), str(self.ownID), str(status))      
     if verbose :
       print('-> {}'.format(command))
     self.sendCommand(command)
@@ -189,6 +182,75 @@ class Transceiver :
       print(command)
     return command
 
+  def processCommand(self, timeout = 2, verbose = False):
+    """
+    Parameters :
+    • timeout [int] : The timeout in seconds
+    • verbose [bool] : If true, print the response of the radio while the message is being received
+    Returns :
+    • message [tuple] : The received event
+    """
+    #TODO: implement returns
+    response = ''
+
+    beginTime = time.time()
+
+    while not '*NTF,' in response :
+      response = self.receiveCommand(timeout)
+      if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
+        if verbose : print(response)
+        return (None, None, response)
+      else :
+        #if verbose : print('<- {}'.format(response))
+        parsedResponse = response.split(',')
+        if(parsedResponse[0]=='*NTF'):
+          #if verbose : print('Radio response or status ',end="")
+
+          #Control frames
+          if(parsedResponse[1]=='CTRL'):
+            print('Control frame, ', end="")
+            if(parsedResponse[2]=='SQL'):
+              print('squelch status: ', parsedResponse[3], 'RSSI:')
+            elif(parsedResponse[2]=='AUD'):
+              print('audio Status: ', parsedResponse[3])
+
+          #UI interfaction frames
+          elif(parsedResponse[1]=='UI'):
+            print('UI frame, ', end="")
+
+          #Channel control frames
+          elif(parsedResponse[1]=='MCH'):
+            print('Channel control frame, ', end="")
+            if(parsedResponse[2]=='SEL'):
+                print('channel selection number: ', parsedResponse[3])
+                
+          #dPMR frames
+          elif(parsedResponse[1]=='DPMR'):
+            print('dPMR frame, ', end="")
+            if(parsedResponse[2]=='RXVCALL'):
+              print('received voice call of type: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5])
+            if(parsedResponse[2]=='RXMSG'):
+              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', parsedResponse[9])
+
+          #IDAS frames            
+          elif(parsedResponse[1]=='IDAS'):
+            print('IDAS frame, ', end="")
+            
+          else:
+             print('This frame has still to be documented')
+             print(response)
+        else:
+          print('Command not implemented yet')
+      
+      
+      
+    
+    return response
+      
+
+    
+    
+
   def receiveMessage(self, timeout = 2, verbose = False):
     """
     Parameters :
@@ -205,7 +267,7 @@ class Transceiver :
       condition = '*NTF,DPMR,RXMSG,IND,'
     else :
       condition = '*NTF,IDAS,RXMSG,IND,'
-    while not '*NTF,DPMR,RXMSG,IND,' in response :
+    while not condition in response :
       response = self.receiveCommand(timeout)
       if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
         if verbose :
@@ -214,7 +276,6 @@ class Transceiver :
       if verbose :
         print('<- {}'.format(response))
         
-
     return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',MSG,"')[-1].split('"')[0])
 
   def setChannel(self, channel, resetDefault = False, verbose = False):
