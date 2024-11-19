@@ -7,7 +7,8 @@ import PyCCMDV2 as pyccmd
 radioSerial = serial.Serial('COM64', 19200, timeout = 2)
 
 
-ownID = 6210
+ownID = 65519
+talkgroupID = 9900
 otherID = 4324
 msg = 'Hello World'
 
@@ -22,6 +23,10 @@ print(radio.getVolume())
 print(radio.getCloneComment(linenr=1))
 print(radio.getCloneComment(linenr=2))
 print(radio.getFreq())
+radio.setRadioID(ownID,talkgroupID)
+print(radio.getRadioID())
 
 while True:
-    r = radio.processCommand(verbose = True)
+    r = radio.receiveMessage(verbose=False)
+    if not r[2]=='TIMEOUT_ERROR':
+        print(r)

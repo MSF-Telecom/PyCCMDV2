@@ -190,7 +190,7 @@ class Transceiver :
     Returns :
     • message [tuple] : The received event
     """
-    #TODO: implement returns
+    #TODO: implement returns, clean up code.
     response = ''
 
     beginTime = time.time()
@@ -230,11 +230,16 @@ class Transceiver :
             if(parsedResponse[2]=='RXVCALL'):
               print('received voice call of type: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5])
             if(parsedResponse[2]=='RXMSG'):
-              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', parsedResponse[9])
+              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', response.split(',MSG,"')[-1].split('"')[0])
 
           #IDAS frames            
           elif(parsedResponse[1]=='IDAS'):
             print('IDAS frame, ', end="")
+            if(parsedResponse[2]=='RXVCALL'):
+              print('received voice call of type: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5])
+            if(parsedResponse[2]=='RXMSG'):
+              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', response.split(',MSG,"')[-1].split('"')[0])
+
             
           else:
              print('This frame has still to be documented')
@@ -248,8 +253,6 @@ class Transceiver :
     return response
       
 
-    
-    
 
   def receiveMessage(self, timeout = 2, verbose = False):
     """
@@ -257,26 +260,37 @@ class Transceiver :
     • timeout [int] : The timeout in seconds
     • verbose [bool] : If true, print the response of the radio while the message is being received
     Returns :
-    • message [tuple] : The received & parsed message with (senderID [int], RSSI [int], Message [string])
+    • message [tuple] : The received & parsed message with (senderID [int], RSSI [int], Message [string], isPosition[bool], isIndividual[bool])
     """
     # TODO : Verify & test function
     response = ''
-    
+    isIndividual = False
     beginTime = time.time()
     if self.mode :
-      condition = '*NTF,DPMR,RXMSG,IND,'
+      condition = '*NTF,DPMR,RXMSG,'
     else :
-      condition = '*NTF,IDAS,RXMSG,IND,'
+      condition = '*NTF,IDAS,RXMSG,'
+      
     while not condition in response :
       response = self.receiveCommand(timeout)
       if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
-        if verbose :
-          print(response)
+        if verbose : print(response)
         return (None, None, response)
-      if verbose :
-        print('<- {}'.format(response))
+      if verbose : print('<- {}'.format(response))
+    
+    if response.split(',')[3]=='IND' :
+        isIndividual = True
+    
+    if response.split(',')[8]=='MSG' :
+        isPosition = False
+        return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',MSG,"')[-1].split('"')[0], isPosition, isIndividual)
+    else: 
+        isPosition = True
+        return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',GPS,"')[-1].split('"')[0], isPosition, isIndividual)
         
-    return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',MSG,"')[-1].split('"')[0])
+    
+        
+    
 
   def setChannel(self, channel, resetDefault = False, verbose = False):
     """
@@ -353,6 +367,37 @@ class Transceiver :
 
     volumeValue = int(response.split(',')[-1])
     return volumeValue
+    
+  def setRadioID(self, radioid, talkgroupid):
+    """
+    Parameters :
+    • radioid [int] : Unique radio identifier
+    • talkgroupid [int] : talkgroup identifier
+    Returns :
+    • Nothing
+    """
+    command = '*SET,IDAS,SENDID,TG,{}'.format(str(talkgroupid)+','+str(radioid))
+    self.sendCommand(command)
+
+  def getRadioID(self):
+    """
+    Parameters :
+    • Nothing
+    Returns :
+    • radioid [int] : Unique radio identifier
+    • talkgroupid [int] : talkgroup identifier
+    """
+    command = '*GET,IDAS,SENDID'
+    self.sendCommand(command)
+    response = ""
+    while not '*NTF,IDAS,SENDID,' in response :
+      response = self.receiveCommand(self.timeout)
+      if(response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR'):
+        return -1
+    
+    radioid = int(response.split(',')[-1])
+    talkgroupid = int(response.split(',')[-2])
+    return radioid, talkgroupid  
 
   def setFreq(self, txFreq, rxFreq):
     """
