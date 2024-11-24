@@ -2,8 +2,6 @@ import serial
 import PyCCMDV2 as pyccmd
 
 
-
-
 radioSerial = serial.Serial('COM64', 19200, timeout = 2)
 
 
@@ -28,5 +26,5 @@ print(radio.getRadioID())
 
 while True:
     r = radio.receiveMessage(verbose=False)
-    if not r[2]=='TIMEOUT_ERROR':
+    if not r.messageType == 'ERR':
         print(r)

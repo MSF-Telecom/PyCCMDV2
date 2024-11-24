@@ -1,4 +1,5 @@
 import time
+from collections import namedtuple
 """
 PyCCMDV2 - a Python library for PC-CMD V2 protocol, used by the majority of ICOM Professional radios.
 Frédéric Druppel - Manoel Casquilho
@@ -180,78 +181,7 @@ class Transceiver :
       command = 'CMD_UNICODE_ERROR'
     if verbose :
       print(command)
-    return command
-
-  def processCommand(self, timeout = 2, verbose = False):
-    """
-    Parameters :
-    • timeout [int] : The timeout in seconds
-    • verbose [bool] : If true, print the response of the radio while the message is being received
-    Returns :
-    • message [tuple] : The received event
-    """
-    #TODO: implement returns, clean up code.
-    response = ''
-
-    beginTime = time.time()
-
-    while not '*NTF,' in response :
-      response = self.receiveCommand(timeout)
-      if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
-        if verbose : print(response)
-        return (None, None, response)
-      else :
-        #if verbose : print('<- {}'.format(response))
-        parsedResponse = response.split(',')
-        if(parsedResponse[0]=='*NTF'):
-          #if verbose : print('Radio response or status ',end="")
-
-          #Control frames
-          if(parsedResponse[1]=='CTRL'):
-            print('Control frame, ', end="")
-            if(parsedResponse[2]=='SQL'):
-              print('squelch status: ', parsedResponse[3], 'RSSI:')
-            elif(parsedResponse[2]=='AUD'):
-              print('audio Status: ', parsedResponse[3])
-
-          #UI interfaction frames
-          elif(parsedResponse[1]=='UI'):
-            print('UI frame, ', end="")
-
-          #Channel control frames
-          elif(parsedResponse[1]=='MCH'):
-            print('Channel control frame, ', end="")
-            if(parsedResponse[2]=='SEL'):
-                print('channel selection number: ', parsedResponse[3])
-                
-          #dPMR frames
-          elif(parsedResponse[1]=='DPMR'):
-            print('dPMR frame, ', end="")
-            if(parsedResponse[2]=='RXVCALL'):
-              print('received voice call of type: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5])
-            if(parsedResponse[2]=='RXMSG'):
-              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', response.split(',MSG,"')[-1].split('"')[0])
-
-          #IDAS frames            
-          elif(parsedResponse[1]=='IDAS'):
-            print('IDAS frame, ', end="")
-            if(parsedResponse[2]=='RXVCALL'):
-              print('received voice call of type: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5])
-            if(parsedResponse[2]=='RXMSG'):
-              print('received text message from: ', parsedResponse[3], ', recipient is:', parsedResponse[4], ', sender is: ', parsedResponse[5], ', contents are of type: ', parsedResponse[8], ', and contains:', response.split(',MSG,"')[-1].split('"')[0])
-
-            
-          else:
-             print('This frame has still to be documented')
-             print(response)
-        else:
-          print('Command not implemented yet')
-      
-      
-      
-    
-    return response
-      
+    return command     
 
 
   def receiveMessage(self, timeout = 2, verbose = False):
@@ -260,35 +190,46 @@ class Transceiver :
     • timeout [int] : The timeout in seconds
     • verbose [bool] : If true, print the response of the radio while the message is being received
     Returns :
-    • message [tuple] : The received & parsed message with (senderID [int], RSSI [int], Message [string], isPosition[bool], isIndividual[bool])
+    • msgReturn [namedtuple] : The received & parsed message with messageType, senderID, destID, testType, messageContents, all [str]
     """
-    # TODO : Verify & test function
     response = ''
-    isIndividual = False
+    # messageType: CH (channel change - contents: channel nr), RXV (digital call received, contents: RSSI), MSG (text message), GPS (text message, contents: coordinates in NMEA), STAT (status message, contents: status value), NA (unsupported), ERR (error, timeout or wrong command)
+    MsgReturn = namedtuple('msgReturn', ['messageType', 'senderID', 'destID', 'destType', 'messageContents'])
+    msgReturn = MsgReturn('NA', 0, 0, '', '')
     beginTime = time.time()
-    if self.mode :
-      condition = '*NTF,DPMR,RXMSG,'
-    else :
-      condition = '*NTF,IDAS,RXMSG,'
       
-    while not condition in response :
+    while not '*NTF,' in response :
       response = self.receiveCommand(timeout)
       if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
         if verbose : print(response)
-        return (None, None, response)
-      if verbose : print('<- {}'.format(response))
+        msgReturn = MsgReturn('ERR', 0, 0, '', response)
+        return msgReturn
+      if verbose : print('RX {}'.format(response))
+    parsedResponse = response.split(',')
+
     
-    if response.split(',')[3]=='IND' :
-        isIndividual = True
-    
-    if response.split(',')[8]=='MSG' :
-        isPosition = False
-        return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',MSG,"')[-1].split('"')[0], isPosition, isIndividual)
-    else: 
-        isPosition = True
-        return (int(response.split(',')[4]), int(response.split(',')[5]), response.split(',GPS,"')[-1].split('"')[0], isPosition, isIndividual)
+    #Digital (dPMR or NXDN) frames
+    if parsedResponse[1]=='IDAS' or parsedResponse[1]=='DPMR':
+        if parsedResponse[2]=='RXVCALL':
+          msgReturn = MsgReturn('RXV', int(parsedResponse[5]), parsedResponse[4], parsedResponse[3], parsedResponse[7])
+        elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='MSG':
+          msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',MSG,"')[-1].split('"')[0])
+        elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='GPS':
+          msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',GPS,"')[-1].split('"')[0])
+        elif parsedResponse[2]=='RXSTAT':
+          msgReturn = MsgReturn('STAT', int(parsedResponse[5]), parsedResponse[4], parsedResponse[3], parsedResponse[8])
         
+    #Channel control frames
+    elif parsedResponse[1]=='MCH' :
+      if parsedResponse[2]=='SEL' :
+        msgReturn = MsgReturn('CH', 0, 0, '', parsedResponse[3])
     
+    
+    # Unsupported command
+    else:
+      msgReturn = MsgReturn('NA', 0, 0, '', '')
+
+    return msgReturn
         
     
 
