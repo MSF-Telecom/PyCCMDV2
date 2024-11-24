@@ -227,7 +227,7 @@ class Transceiver :
         elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='MSG':
           msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',MSG,"')[-1].split('"')[0])
         elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='GPS':
-          msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',GPS,"')[-1].split('"')[0])
+          msgReturn = MsgReturn('GPS', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',GPS,"')[-1].split('"')[0])
         elif parsedResponse[2]=='RXSTAT':
           msgReturn = MsgReturn('STAT', parsedResponse[5], parsedResponse[4], parsedResponse[3], parsedResponse[8])
         elif parsedResponse[2]=='RXENCRYPT':
