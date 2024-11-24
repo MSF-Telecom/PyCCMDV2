@@ -26,5 +26,8 @@ print(radio.getRadioID())
 
 while True:
     r = radio.receiveMessage(verbose=False)
+    if r.messageType == 'CH':
+        print('Channel changed! Need to re-activate RadioID')
+        radio.setRadioID(ownID,talkgroupID)
     if not r.messageType == 'ERR':
         print(r)

@@ -72,7 +72,7 @@ class Transceiver :
     else :
       command = '*SET,IDAS,TXMSG,IND,{},{},MSG,"{}",ACK'.format(str(otherID), str(self.ownID), message)
     if verbose :
-      print('-> {}'.format(command))
+      print('TX {}'.format(command))
     self.sendCommand(command)
 
     response = ''
@@ -90,7 +90,7 @@ class Transceiver :
         self.setChannel(self.DEFCH)
         return response
       if verbose :
-        print('<- {}'.format(response))
+        print('RX {}'.format(response))
 
     if '"' + message + '",ACK,OK' in response :
       self.setChannel(self.DEFCH)
@@ -101,6 +101,8 @@ class Transceiver :
     else :
       self.setChannel(self.DEFCH)
       return 'UNKNOWN_ERROR'
+
+    
 
   def sendStatus(self, status, otherID, timeout = 10, verbose = False):
     """
@@ -116,7 +118,6 @@ class Transceiver :
     
     self.setChannel(self.MSGCH, resetDefault = True)
 
-    # *SET,DPMR,TXSTAT,IND,0001107,0001748,1,ACK
     if self.mode :
       command = '*SET,DPMR,TXSTAT,IND,{},{},{},ACK'.format(self.zfill(str(otherID), 7), self.zfill(str(self.ownID), 7), str(status))
     else :
@@ -193,41 +194,69 @@ class Transceiver :
     • msgReturn [namedtuple] : The received & parsed message with messageType, senderID, destID, testType, messageContents, all [str]
     """
     response = ''
-    # messageType: CH (channel change - contents: channel nr), RXV (digital call received, contents: RSSI), MSG (text message), GPS (text message, contents: coordinates in NMEA), STAT (status message, contents: status value), NA (unsupported), ERR (error, timeout or wrong command)
+    # messageType:
+    #CH (channel change - contents: channel nr),
+    #AUD (audio channel, contents: ON or OFF)
+    #SQL (squelch, either CLOSED or displays an RSSI value),
+    #RXI (digital call, only RSSI, contents RSSI)
+    #RXV (digital call received, contents: IDs and RSSI),
+    #ENCR (Scrambler status, contents: encryption value info)
+    #CCRAN (digital Color Code or RAN, contents: CC or RAN)
+    #MSG (text message),
+    #GPS (text message, contents: coordinates in NMEA),
+    #STAT (status message, contents: status value),
+    #NA (unsupported),
+    #ERR (error, timeout or wrong command)
     MsgReturn = namedtuple('msgReturn', ['messageType', 'senderID', 'destID', 'destType', 'messageContents'])
-    msgReturn = MsgReturn('NA', 0, 0, '', '')
+    msgReturn = MsgReturn('NA', '', '', '', '')
     beginTime = time.time()
       
     while not '*NTF,' in response :
       response = self.receiveCommand(timeout)
       if response == 'TIMEOUT_ERROR' or response == 'CMD_UNICODE_ERROR' :
         if verbose : print(response)
-        msgReturn = MsgReturn('ERR', 0, 0, '', response)
+        msgReturn = MsgReturn('ERR', '', '', '', response)
         return msgReturn
       if verbose : print('RX {}'.format(response))
     parsedResponse = response.split(',')
 
-    
     #Digital (dPMR or NXDN) frames
     if parsedResponse[1]=='IDAS' or parsedResponse[1]=='DPMR':
         if parsedResponse[2]=='RXVCALL':
-          msgReturn = MsgReturn('RXV', int(parsedResponse[5]), parsedResponse[4], parsedResponse[3], parsedResponse[7])
+          msgReturn = MsgReturn('RXV', parsedResponse[5], parsedResponse[4], parsedResponse[3], parsedResponse[7])
         elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='MSG':
           msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',MSG,"')[-1].split('"')[0])
         elif parsedResponse[2]=='RXMSG' and parsedResponse[8]=='GPS':
           msgReturn = MsgReturn('MSG', parsedResponse[5], parsedResponse[4], parsedResponse[3], response.split(',GPS,"')[-1].split('"')[0])
         elif parsedResponse[2]=='RXSTAT':
-          msgReturn = MsgReturn('STAT', int(parsedResponse[5]), parsedResponse[4], parsedResponse[3], parsedResponse[8])
-        
+          msgReturn = MsgReturn('STAT', parsedResponse[5], parsedResponse[4], parsedResponse[3], parsedResponse[8])
+        elif parsedResponse[2]=='RXENCRYPT':
+          msgReturn = MsgReturn('ENCR', '', '', '', parsedResponse[3])
+        elif parsedResponse[2]=='RXRAN' or parsedResponse[2]=='RXCC':
+          msgReturn = MsgReturn('CCRAN', '', '', '', parsedResponse[3])
+
     #Channel control frames
     elif parsedResponse[1]=='MCH' :
       if parsedResponse[2]=='SEL' :
         msgReturn = MsgReturn('CH', 0, 0, '', parsedResponse[3])
-    
-    
+
+    #General status frames
+    elif parsedResponse[1]=='CTRL':
+      if parsedResponse[2]=='SQL' and parsedResponse[3]=='OPEN':
+        msgReturn = MsgReturn('SQL', 0, 0, '', parsedResponse[5])
+      elif parsedResponse[2]=='SQL' and parsedResponse[3]=='CLOSE':
+        msgReturn = MsgReturn('SQL', 0, 0, '', parsedResponse[3])
+      elif parsedResponse[2]=='AUD' :
+        msgReturn = MsgReturn('AUD', 0, 0, '', parsedResponse[3])
+      if parsedResponse[2]=='DBUSY' and parsedResponse[3]=='ON':
+        msgReturn = MsgReturn('RXI', 0, 0, '', parsedResponse[5])
+      elif parsedResponse[2]=='DBUSY' and parsedResponse[3]=='OFF':
+        msgReturn = MsgReturn('RXI', 0, 0, '', parsedResponse[3])
+        
     # Unsupported command
     else:
-      msgReturn = MsgReturn('NA', 0, 0, '', '')
+      print(response)
+      msgReturn = MsgReturn('NA', '', '', '', '')
 
     return msgReturn
         
